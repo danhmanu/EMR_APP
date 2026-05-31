@@ -1,0 +1,61 @@
+version: '3.8'
+
+# EMR GIADINH backend stack: MySQL + .NET API
+# Use: docker compose up -d --build
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: giadinhemr_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+      MYSQL_DATABASE: giadinhemr
+      MYSQL_USER: giadinhemr_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+    ports:
+      - "3306:3306"
+    volumes:
+      - giadinhemr_mysql_data:/var/lib/mysql
+    networks:
+      - giadinhemr_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-changeme}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: giadinhemr_api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: >-
+        Server=mysql;Port=3306;Database=giadinhemr;User=giadinhemr_user;Password=${MYSQL_PASSWORD:-changeme};AllowPublicKeyRetrieval=true;SslMode=None;
+      ConnectionStrings__EmrConnection: >-
+        Server=mysql;Port=3306;Database=giadinhemr;User=giadinhemr_user;Password=${MYSQL_PASSWORD:-changeme};AllowPublicKeyRetrieval=true;SslMode=None;
+      Application__EnableEmrCore: "true"
+      Application__EnableEmrBackgroundJobs: "false"
+      Jwt__Key: ${JWT_KEY:?JWT_KEY must be set in .env}
+      Jwt__ExpiryHours: ${JWT_EXPIRY_HOURS:-8}
+    ports:
+      - "8080:8080"
+    volumes:
+      - giadinhemr_uploads_data:/app/wwwroot/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - giadinhemr_net
+
+volumes:
+  giadinhemr_mysql_data:
+  giadinhemr_uploads_data:
+
+networks:
+  giadinhemr_net:
+    driver: bridge
+    name: giadinhemr_net

@@ -1,0 +1,22 @@
+version: '3.8'
+
+# Frontend stack: React/Vite → nginx
+# Yêu cầu: backend (emr_net) phải chạy trước
+# Sử dụng: docker compose up -d --build
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: emr_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - emr_net
+
+networks:
+  emr_net:
+    external: true
+    name: emr_net

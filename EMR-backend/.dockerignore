@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+**/.vs/
+**/.vscode/
+**/*.user
+**/*.suo
+**/*.cache
+**/node_modules/
+tmp-build-api*/

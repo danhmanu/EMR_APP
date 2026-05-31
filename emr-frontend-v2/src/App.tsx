@@ -5,6 +5,8 @@ import TableColumnResizeEnhancer from './components/common/TableColumnResizeEnha
 
 const Login = lazy(() => import('./pages/Login'))
 const EmrGiadinh = lazy(() => import('./pages/Emr/EmrGiadinh'))
+const PrintTemplateConfig = lazy(() => import('./pages/Emr/PrintTemplateConfig'))
+const PrintTemplateEditor = lazy(() => import('./pages/Emr/PrintTemplateEditor'))
 const Users = lazy(() => import('./pages/Admin/Users'))
 const PermissionManagement = lazy(() => import('./pages/Admin/PermissionManagement'))
 const AdminMenuConfig = lazy(() => import('./pages/Admin/AdminMenuConfig'))
@@ -32,6 +34,9 @@ export default function App(): JSX.Element {
           <Route element={<Private><LayoutShell /></Private>}>
             <Route path="/" element={<EmrGiadinh />} />
             <Route path="/emr" element={<EmrGiadinh />} />
+            <Route path="/emr/print-templates" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><PrintTemplateConfig /></Private>} />
+            <Route path="/emr/print-templates/new" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><PrintTemplateEditor /></Private>} />
+            <Route path="/emr/print-templates/:id/edit" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><PrintTemplateEditor /></Private>} />
             <Route path="/users" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><Users /></Private>} />
             <Route path="/permissions" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><PermissionManagement /></Private>} />
             <Route path="/admin/menu-config" element={<Private allowedRoles={USER_MANAGEMENT_ROLES}><AdminMenuConfig /></Private>} />

@@ -109,8 +109,154 @@ namespace EMR.Infrastructure
 
             SeedMenuItems(db);
             SeedSystemConfigurations(db);
+            SeedSysApis(db);
+            SeedEmrPrintTemplates(db);
             SeedPermissionItems(db);
             DisableAssetManagementMenus(db);
+        }
+
+        private static void SeedEmrPrintTemplates(AppDbContext db)
+        {
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS `emr_print_templates` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `Code` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+                    `Name` varchar(250) CHARACTER SET utf8mb4 NOT NULL,
+                    `Description` varchar(500) CHARACTER SET utf8mb4 NULL,
+                    `TemplateGroup` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+                    `Version` int NOT NULL,
+                    `PaperSize` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+                    `Orientation` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+                    `LayoutJson` longtext CHARACTER SET utf8mb4 NOT NULL,
+                    `SampleDataJson` longtext CHARACTER SET utf8mb4 NULL,
+                    `IsActive` tinyint(1) NOT NULL,
+                    `IsDefault` tinyint(1) NOT NULL,
+                    `CreatedAt` datetime(6) NOT NULL,
+                    `UpdatedAt` datetime(6) NOT NULL,
+                    CONSTRAINT `PK_emr_print_templates` PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_emr_print_templates_Code` (`Code`)
+                ) CHARACTER SET=utf8mb4;");
+
+            if (db.EmrPrintTemplates.Any(x => x.Code == "BA_VAO_VIEN"))
+            {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            db.EmrPrintTemplates.Add(new EmrPrintTemplate
+            {
+                Code = "BA_VAO_VIEN",
+                Name = "Bệnh án vào viện",
+                Description = "Mẫu in nền cho bệnh án vào viện.",
+                TemplateGroup = "EMR",
+                Version = 1,
+                PaperSize = "A4",
+                Orientation = "Portrait",
+                IsActive = true,
+                IsDefault = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                LayoutJson = @"{
+  ""title"": ""BỆNH ÁN VÀO VIỆN"",
+  ""subtitle"": ""{{hospitalName}}"",
+  ""sections"": [
+    {
+      ""title"": ""Thông tin người bệnh"",
+      ""columns"": 2,
+      ""fields"": [
+        { ""label"": ""Mã bệnh nhân"", ""path"": ""patient.hospCode"" },
+        { ""label"": ""Mã y tế"", ""path"": ""patient.medicalCode"" },
+        { ""label"": ""Họ tên"", ""path"": ""patient.fullName"", ""span"": 2 },
+        { ""label"": ""Ngày sinh"", ""path"": ""patient.dateOfBirth"" },
+        { ""label"": ""Giới tính"", ""path"": ""patient.gender"" },
+        { ""label"": ""Địa chỉ"", ""path"": ""patient.address"", ""span"": 2 }
+      ]
+    },
+    {
+      ""title"": ""Thông tin điều trị"",
+      ""columns"": 2,
+      ""fields"": [
+        { ""label"": ""Khoa/Khu"", ""path"": ""patient.department"" },
+        { ""label"": ""Phòng/Giường"", ""path"": ""patient.roomBed"" },
+        { ""label"": ""Ngày vào viện"", ""path"": ""patient.admissionDate"" },
+        { ""label"": ""Bác sĩ điều trị"", ""path"": ""patient.doctorName"" },
+        { ""label"": ""Chẩn đoán"", ""path"": ""patient.diagnosis"", ""span"": 2 }
+      ]
+    }
+  ],
+  ""signatures"": [
+    { ""label"": ""Bác sĩ điều trị"", ""align"": ""right"" }
+  ]
+}",
+                SampleDataJson = @"{
+  ""hospitalName"": ""GIADINH HOSPITAL"",
+  ""patient"": {
+    ""hospCode"": ""26336010810"",
+    ""medicalCode"": ""017900026Y013770yy"",
+    ""fullName"": ""NGUYỄN VĂN A"",
+    ""dateOfBirth"": ""1972-01-01"",
+    ""gender"": ""Nam"",
+    ""address"": ""Thành phố Hồ Chí Minh"",
+    ""department"": ""Ngoại tổng hợp"",
+    ""roomBed"": ""Khu điều trị ngoại / Giường 02"",
+    ""admissionDate"": ""31/05/2026 08:00"",
+    ""doctorName"": ""BS. Điều trị"",
+    ""diagnosis"": ""Chẩn đoán vào viện""
+  }
+}"
+            });
+
+            db.SaveChanges();
+        }
+
+        private static void SeedSysApis(AppDbContext db)
+        {
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS `sysapi` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `Code` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+                    `Extend` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+                    `Method` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+                    CONSTRAINT `PK_sysapi` PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_sysapi_Code` (`Code`)
+                ) CHARACTER SET=utf8mb4;");
+
+            var seedItems = new[]
+            {
+                new SysApi
+                {
+                    Code = "getCateMedexah",
+                    Extend = "/api/EMR/v1/CateMedexah",
+                    Method = "GET"
+                },
+                new SysApi
+                {
+                    Code = "getCateMedexal",
+                    Extend = "/api/EMR/v1/CateMedexal",
+                    Method = "GET"
+                },
+                new SysApi
+                {
+                    Code = "getListInpatientMedicalByTypeList",
+                    Extend = "/api/EMR/v1/EmrMedicalRecord/GetListInpatientMedicalByTypeList",
+                    Method = "POST"
+                }
+            };
+
+            foreach (var item in seedItems)
+            {
+                var existing = db.SysApis.FirstOrDefault(x => x.Code == item.Code);
+                if (existing == null)
+                {
+                    db.SysApis.Add(item);
+                    continue;
+                }
+
+                existing.Extend = item.Extend;
+                existing.Method = item.Method;
+            }
+
+            db.SaveChanges();
         }
 
         private static void SeedSystemConfigurations(AppDbContext db)
@@ -425,6 +571,43 @@ namespace EMR.Infrastructure
                 {
                     RoleId = adminRoleForMenu.Id,
                     MenuItemId = systemConfigurationMenu.Id
+                });
+                db.SaveChanges();
+            }
+
+            var emrPrintTemplatesMenu = db.MenuItems.FirstOrDefault(m => m.Key == "emr-print-templates");
+            if (emrPrintTemplatesMenu == null)
+            {
+                var settingsMenu = db.MenuItems.FirstOrDefault(m => m.Key == "settings");
+                emrPrintTemplatesMenu = new MenuItem
+                {
+                    Key = "emr-print-templates",
+                    Title = "Cấu hình mẫu in",
+                    Link = "/emr/print-templates",
+                    Icon = "FileTextOutlined",
+                    DisplayOrder = 13,
+                    ParentMenuItemId = settingsMenu?.Id,
+                    IsDeleted = false
+                };
+                db.MenuItems.Add(emrPrintTemplatesMenu);
+                db.SaveChanges();
+            }
+            else if (emrPrintTemplatesMenu.Link != "/emr/print-templates" || emrPrintTemplatesMenu.IsDeleted)
+            {
+                emrPrintTemplatesMenu.Title = "Cấu hình mẫu in";
+                emrPrintTemplatesMenu.Link = "/emr/print-templates";
+                emrPrintTemplatesMenu.Icon = "FileTextOutlined";
+                emrPrintTemplatesMenu.DisplayOrder = 13;
+                emrPrintTemplatesMenu.IsDeleted = false;
+                db.SaveChanges();
+            }
+
+            if (adminRoleForMenu != null && !db.RoleMenuMaps.Any(rm => rm.RoleId == adminRoleForMenu.Id && rm.MenuItemId == emrPrintTemplatesMenu.Id))
+            {
+                db.RoleMenuMaps.Add(new RoleMenuMap
+                {
+                    RoleId = adminRoleForMenu.Id,
+                    MenuItemId = emrPrintTemplatesMenu.Id
                 });
                 db.SaveChanges();
             }

@@ -17,6 +17,8 @@ namespace EMR.Infrastructure
         public DbSet<PermissionItem> PermissionItems { get; set; }
         public DbSet<PermissionRoleMap> PermissionRoleMaps { get; set; }
         public DbSet<SystemConfiguration> SystemConfigurations { get; set; }
+        public DbSet<SysApi> SysApis { get; set; }
+        public DbSet<EmrPrintTemplate> EmrPrintTemplates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -85,6 +87,29 @@ namespace EMR.Infrastructure
             modelBuilder.Entity<SystemConfiguration>()
                 .Property(x => x.Description)
                 .HasMaxLength(500);
+
+            modelBuilder.Entity<SysApi>(entity =>
+            {
+                entity.ToTable("sysapi");
+                entity.HasIndex(x => x.Code).IsUnique();
+                entity.Property(x => x.Code).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Extend).HasMaxLength(500).IsRequired();
+                entity.Property(x => x.Method).HasMaxLength(20).IsRequired();
+            });
+
+            modelBuilder.Entity<EmrPrintTemplate>(entity =>
+            {
+                entity.ToTable("emr_print_templates");
+                entity.HasIndex(x => x.Code).IsUnique();
+                entity.Property(x => x.Code).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Name).HasMaxLength(250).IsRequired();
+                entity.Property(x => x.Description).HasMaxLength(500);
+                entity.Property(x => x.TemplateGroup).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.PaperSize).HasMaxLength(20).IsRequired();
+                entity.Property(x => x.Orientation).HasMaxLength(20).IsRequired();
+                entity.Property(x => x.LayoutJson).HasColumnType("longtext").IsRequired();
+                entity.Property(x => x.SampleDataJson).HasColumnType("longtext");
+            });
         }
     }
 }

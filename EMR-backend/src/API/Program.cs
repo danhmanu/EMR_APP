@@ -10,6 +10,7 @@ using EMR.Infrastructure;
 using EMR.Api.Filters;
 using EMR.Api.Serialization;
 using EMR.Infrastructure.Repositories;
+using EMR.Infrastructure.ExternalServices;
 using EMR.Application.Services;
 using Domain.Repositories;
 
@@ -34,6 +35,7 @@ static string GetJwtKey(IConfiguration configuration)
 
 // Use environment from configuration or defaults to Production
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("external-services.json", optional: true, reloadOnChange: true);
 
 // OPTIONAL: Configure Serilog for structured logging
 // Uncomment and install Serilog packages with:
@@ -67,6 +69,7 @@ if (string.IsNullOrEmpty(connection))
     throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured. Ensure appsettings.json contains the connection string.");
 }
 builder.Services.AddDbContext<AppDbContext>(options => options.UseMySql(connection, ServerVersion.Parse("8.0.0-mysql")));
+builder.Services.AddHttpClient();
 
 // Register IAuthService with JWT configuration
 var jwtKey = GetJwtKey(builder.Configuration);
@@ -85,6 +88,8 @@ builder.Services.AddScoped<IRoleAdminService, EMR.Application.Services.RoleAdmin
 builder.Services.AddScoped<IPermissionAdminService, EMR.Application.Services.PermissionAdminService>();
 builder.Services.AddScoped<EMR.Application.Interfaces.IMenuService, EMR.Application.Services.MenuService>();
 builder.Services.AddScoped<EMR.Application.Interfaces.ISystemConfigurationService, EMR.Application.Services.SystemConfigurationService>();
+builder.Services.AddScoped<IExternalApiClient, ExternalApiClient>();
+builder.Services.AddScoped<IIcareWebApiService, IcareWebApiService>();
 
 // register http context accessor + current user service to populate PerformedByUserId
 builder.Services.AddHttpContextAccessor();

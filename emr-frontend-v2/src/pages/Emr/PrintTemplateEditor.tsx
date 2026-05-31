@@ -16,7 +16,8 @@ import {
   Tag,
   Tooltip,
   Typography,
-  message
+  message,
+  type FormInstance
 } from 'antd'
 import {
   ArrowLeftOutlined,
@@ -40,6 +41,7 @@ import {
 } from '../../services/emrPrintTemplates'
 
 const { Text, Title } = Typography
+const HEADER_SECTION_ID = '__template_header__'
 
 type FieldSchema = {
   id: string
@@ -58,6 +60,10 @@ type FieldSchema = {
   fit?: 'contain' | 'cover' | 'fill'
   align?: 'left' | 'center' | 'right'
   alt?: string
+  fontSize?: number
+  fontWeight?: 'normal' | 'bold'
+  fontStyle?: 'normal' | 'italic'
+  textDecoration?: 'none' | 'underline'
 }
 
 type SectionSchema = {
@@ -67,9 +73,25 @@ type SectionSchema = {
   fields: FieldSchema[]
 }
 
+type HeaderSchema = {
+  title?: string
+  subtitle?: string
+  hospitalName?: string
+  departmentName?: string
+  documentCode?: string
+  logoPath?: string
+  logoWidth?: number
+  logoHeight?: number
+  columns?: number
+  fields?: FieldSchema[]
+  layout?: 'left' | 'center' | 'split'
+  showBorder?: boolean
+}
+
 type PrintLayoutSchema = {
   title: string
   subtitle?: string
+  header: HeaderSchema
   sections: SectionSchema[]
   signatures?: Array<{ label?: string; align?: 'left' | 'center' | 'right' }>
 }
@@ -145,6 +167,7 @@ const FIELD_PALETTE = [
 
 const DEFAULT_SAMPLE_DATA = `{
   "hospitalName": "GIADINH HOSPITAL",
+  "departmentName": "KHOA NGOẠI TỔNG HỢP",
   "hospitalLogo": "https://via.placeholder.com/240x100?text=GIADINH",
   "patient": {
     "hospCode": "26336010810",
@@ -208,14 +231,38 @@ function normalizeField(field: Partial<FieldSchema>): FieldSchema {
     height: field.height,
     fit: field.fit,
     align: field.align,
-    alt: field.alt
+    alt: field.alt,
+    fontSize: field.fontSize,
+    fontWeight: field.fontWeight,
+    fontStyle: field.fontStyle,
+    textDecoration: field.textDecoration
+  }
+}
+
+function normalizeHeader(layout: Partial<PrintLayoutSchema>): HeaderSchema {
+  const header = layout.header || {}
+  return {
+    title: header.title ?? layout.title ?? 'TÊN BIỂU MẪU',
+    subtitle: header.subtitle ?? layout.subtitle ?? '{{hospitalName}}',
+    hospitalName: header.hospitalName ?? '{{hospitalName}}',
+    departmentName: header.departmentName ?? '{{departmentName}}',
+    documentCode: header.documentCode ?? '',
+    logoPath: header.logoPath ?? 'hospitalLogo',
+    logoWidth: Number(header.logoWidth || 76),
+    logoHeight: Number(header.logoHeight || 54),
+    columns: Number(header.columns || 12),
+    fields: (header.fields || []).map(normalizeField),
+    layout: header.layout || 'split',
+    showBorder: header.showBorder !== false
   }
 }
 
 function withIds(layout: Partial<PrintLayoutSchema>): PrintLayoutSchema {
+  const header = normalizeHeader(layout)
   return {
-    title: layout.title || 'TÊN BIỂU MẪU',
-    subtitle: layout.subtitle || '{{hospitalName}}',
+    title: header.title || 'TÊN BIỂU MẪU',
+    subtitle: header.subtitle || '{{hospitalName}}',
+    header,
     sections: (layout.sections?.length ? layout.sections : [{ title: 'Thông tin chung', columns: 2, fields: [] }]).map(section => ({
       id: section.id || createId(),
       title: section.title || 'Thông tin',
@@ -242,14 +289,23 @@ function cleanField(field: FieldSchema): Omit<FieldSchema, 'id'> {
     height: field.height,
     fit: field.fit,
     align: field.align,
-    alt: field.alt
+    alt: field.alt,
+    fontSize: field.fontSize,
+    fontWeight: field.fontWeight,
+    fontStyle: field.fontStyle,
+    textDecoration: field.textDecoration
   }
 }
 
 function stripIds(layout: PrintLayoutSchema) {
+  const header = {
+    ...layout.header,
+    fields: (layout.header.fields || []).map(cleanField)
+  }
   return {
-    title: layout.title,
-    subtitle: layout.subtitle,
+    title: header.title || layout.title,
+    subtitle: header.subtitle || layout.subtitle,
+    header,
     sections: layout.sections.map(section => ({
       title: section.title,
       columns: section.columns,
@@ -278,17 +334,35 @@ function renderOptionValue(field: FieldSchema, value: string) {
   return field.options?.find(option => option.value === value || option.label === value)?.label || value
 }
 
+function getFieldTextStyle(field: FieldSchema): React.CSSProperties {
+  return {
+    fontSize: field.fontSize,
+    fontWeight: field.fontWeight,
+    fontStyle: field.fontStyle,
+    textDecoration: field.textDecoration === 'underline' ? 'underline' : undefined
+  }
+}
+
+function getLabelStyle(field: FieldSchema): React.CSSProperties {
+  return {
+    fontWeight: field.fontWeight || 700,
+    fontStyle: field.fontStyle,
+    textDecoration: field.textDecoration === 'underline' ? 'underline' : undefined
+  }
+}
+
 function renderPreviewField(field: FieldSchema, data: any, columns: number) {
   const span = Math.max(1, Math.min(field.span || 1, columns))
   const rawValue = getRawValue(data, field.path)
   const value = getValue(data, field.path, field.value)
+  const textStyle = getFieldTextStyle(field)
 
   if (field.type === 'table') {
     const rows = Array.isArray(rawValue) ? rawValue : []
     const tableColumns = field.columns || []
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>{field.label}</div>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
+        <div style={{ ...getLabelStyle(field), marginBottom: 6 }}>{field.label}</div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr>{tableColumns.map(column => <th key={column.path} style={{ border: '1px solid #333', padding: 5, textAlign: 'left' }}>{column.label}</th>)}</tr>
@@ -306,11 +380,11 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
   if (field.type === 'repeater') {
     const rows = Array.isArray(rawValue) ? rawValue : []
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>{field.label}</div>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
+        <div style={{ ...getLabelStyle(field), marginBottom: 6 }}>{field.label}</div>
         {(rows.length ? rows : [{}]).map((row, rowIndex) => (
           <div key={rowIndex} style={{ border: '1px solid #999', padding: 8, marginBottom: 8 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>#{rowIndex + 1}</div>
+            <div style={{ ...getLabelStyle(field), marginBottom: 4 }}>#{rowIndex + 1}</div>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '6px 12px' }}>
               {(field.items || []).map(item => renderPreviewField(item, row, columns))}
             </div>
@@ -322,8 +396,8 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
 
   if (field.type === 'signature') {
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}`, textAlign: 'center', marginTop: 24 }}>
-        <div style={{ fontWeight: 700 }}>{field.value || field.label}</div>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, textAlign: 'center', marginTop: 24, ...textStyle }}>
+        <div style={getLabelStyle(field)}>{field.value || field.label}</div>
         <div style={{ height: 70 }} />
         <div>.................................</div>
       </div>
@@ -334,8 +408,8 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
     const src = value
     const justifyContent = field.align === 'right' ? 'flex-end' : field.align === 'center' ? 'center' : 'flex-start'
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-        {field.label && <div style={{ fontWeight: 700, marginBottom: 6 }}>{field.label}</div>}
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
+        {field.label && <div style={{ ...getLabelStyle(field), marginBottom: 6 }}>{field.label}</div>}
         <div style={{ display: 'flex', justifyContent }}>
           {src ? (
             <img
@@ -362,8 +436,8 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
     const images = Array.isArray(rawValue) ? rawValue : []
     const justifyContent = field.align === 'right' ? 'flex-end' : field.align === 'center' ? 'center' : 'flex-start'
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>{field.label}</div>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
+        <div style={{ ...getLabelStyle(field), marginBottom: 6 }}>{field.label}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent }}>
           {(images.length ? images : ['']).map((src, index) => (
             src ? (
@@ -386,17 +460,25 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
 
   if (field.type === 'checkbox') {
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
         <span>{rawValue === true || rawValue === 'true' || rawValue === 1 ? '☑' : '☐'} </span>
-        <span style={{ fontWeight: 700 }}>{field.label}</span>
+        <span style={getLabelStyle(field)}>{field.label}</span>
+      </div>
+    )
+  }
+
+  if (field.type === 'static') {
+    return (
+      <div key={field.id} style={{ gridColumn: `span ${span}`, textAlign: field.align || 'left', ...textStyle }}>
+        <span style={getLabelStyle(field)}>{renderTemplateText(field.value || field.label, data)}</span>
       </div>
     )
   }
 
   if (field.type === 'radio') {
     return (
-      <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-        <span style={{ fontWeight: 700 }}>{field.label}: </span>
+      <div key={field.id} style={{ gridColumn: `span ${span}`, ...textStyle }}>
+        <span style={getLabelStyle(field)}>{field.label}: </span>
         {(field.options || []).map(option => <span key={option.value} style={{ marginRight: 12 }}>{option.value === rawValue || option.label === rawValue ? '◉' : '○'} {option.label}</span>)}
       </div>
     )
@@ -404,10 +486,60 @@ function renderPreviewField(field: FieldSchema, data: any, columns: number) {
 
   const displayValue = field.type === 'select' ? renderOptionValue(field, value) : value
   return (
-    <div key={field.id} style={{ gridColumn: `span ${span}` }}>
-      <span style={{ fontWeight: 700 }}>{field.label}: </span>
+    <div key={field.id} style={{ gridColumn: `span ${span}`, textAlign: field.align || 'left', ...textStyle }}>
+      <span style={getLabelStyle(field)}>{field.label}: </span>
       <span>{displayValue}</span>
       {field.unit && <span> {field.unit}</span>}
+    </div>
+  )
+}
+
+function renderPrintHeader(layout: PrintLayoutSchema, data: any) {
+  const header = layout.header || normalizeHeader(layout)
+  if (header.fields?.length) {
+    const columns = Math.max(1, Number(header.columns || 12))
+    return (
+      <div style={{ borderBottom: header.showBorder ? '1px solid #222' : undefined, paddingBottom: 12, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px 10px', alignItems: 'start' }}>
+          {header.fields.map(field => renderPreviewField(field, data, columns))}
+        </div>
+      </div>
+    )
+  }
+  const logo = getValue(data, header.logoPath)
+  const borderBottom = header.showBorder ? '1px solid #222' : undefined
+  const commonTitle = (
+    <>
+      <div style={{ fontSize: 13, textTransform: 'uppercase' }}>{renderTemplateText(header.hospitalName || header.subtitle, data)}</div>
+      {header.departmentName && <div style={{ fontSize: 12 }}>{renderTemplateText(header.departmentName, data)}</div>}
+      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{renderTemplateText(header.title || layout.title, data)}</div>
+      {header.layout !== 'split' && header.documentCode && <div style={{ fontSize: 12, marginTop: 4 }}>{renderTemplateText(header.documentCode, data)}</div>}
+    </>
+  )
+
+  if (header.layout === 'center') {
+    return (
+      <div style={{ textAlign: 'center', borderBottom, paddingBottom: 12, marginBottom: 18 }}>
+        {logo && <img src={logo} alt="Logo" style={{ width: header.logoWidth || 76, height: header.logoHeight || 54, objectFit: 'contain', marginBottom: 6 }} />}
+        {commonTitle}
+      </div>
+    )
+  }
+
+  if (header.layout === 'left') {
+    return (
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', borderBottom, paddingBottom: 12, marginBottom: 18 }}>
+        {logo && <img src={logo} alt="Logo" style={{ width: header.logoWidth || 76, height: header.logoHeight || 54, objectFit: 'contain' }} />}
+        <div>{commonTitle}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 120px', alignItems: 'center', borderBottom, paddingBottom: 12, marginBottom: 18 }}>
+      <div>{logo && <img src={logo} alt="Logo" style={{ width: header.logoWidth || 76, height: header.logoHeight || 54, objectFit: 'contain' }} />}</div>
+      <div style={{ textAlign: 'center' }}>{commonTitle}</div>
+      <div style={{ textAlign: 'right', fontSize: 12 }}>{header.documentCode ? renderTemplateText(header.documentCode, data) : ''}</div>
     </div>
   )
 }
@@ -417,10 +549,7 @@ function PrintPreview({ layout, sampleDataJson }: { layout: PrintLayoutSchema; s
   return (
     <div style={{ background: '#f3f4f6', padding: 16, minHeight: 620, overflow: 'auto' }}>
       <div style={{ width: 794, minHeight: 1123, margin: '0 auto', background: '#fff', color: '#111', padding: 42, boxShadow: '0 8px 28px rgba(15, 23, 42, 0.16)', fontFamily: 'Times New Roman, serif' }}>
-        <div style={{ textAlign: 'center', borderBottom: '1px solid #222', paddingBottom: 12, marginBottom: 18 }}>
-          <div style={{ fontSize: 13, textTransform: 'uppercase' }}>{renderTemplateText(layout.subtitle, sampleData)}</div>
-          <div style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{renderTemplateText(layout.title, sampleData)}</div>
-        </div>
+        {renderPrintHeader(layout, sampleData)}
         {layout.sections.map(section => (
           <div key={section.id} style={{ marginBottom: 18 }}>
             <div style={{ fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>{section.title}</div>
@@ -445,6 +574,397 @@ function Panel({ children, title, extra }: { children: React.ReactNode; title?: 
       )}
       <div style={{ padding: 12 }}>{children}</div>
     </div>
+  )
+}
+
+function PalettePanel() {
+  return (
+    <Panel title="Thành phần">
+      <div style={{ display: 'grid', gap: 8 }}>
+        {FIELD_PALETTE.map(item => (
+          <div
+            key={item.type}
+            draggable
+            onDragStart={event => event.dataTransfer.setData('field-type', item.type)}
+            style={{ border: '1px solid #d9d9d9', borderRadius: 8, padding: '9px 10px', cursor: 'grab', background: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <span style={{ color: '#1677ff' }}>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+function TemplateInfoPanel({ form }: { form: FormInstance<TemplateFormValues> }) {
+  return (
+    <Panel title="Thông tin mẫu">
+      <Form form={form} layout="vertical">
+        <Row gutter={10}>
+          <Col xs={24} md={8}><Form.Item name="code" label="Mã mẫu" rules={[{ required: true }]}><Input placeholder="VD: BA_VAO_VIEN" /></Form.Item></Col>
+          <Col xs={24} md={16}><Form.Item name="name" label="Tên mẫu" rules={[{ required: true }]}><Input placeholder="Tên biểu mẫu" /></Form.Item></Col>
+          <Col xs={24}><Form.Item name="description" label="Mô tả"><Input placeholder="Mục đích sử dụng hoặc ghi chú nội bộ" /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="templateGroup" label="Nhóm"><Input /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="version" label="Phiên bản"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="paperSize" label="Khổ giấy"><Select options={[{ value: 'A4', label: 'A4' }, { value: 'A5', label: 'A5' }]} /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="orientation" label="Hướng giấy"><Select options={[{ value: 'Portrait', label: 'Dọc' }, { value: 'Landscape', label: 'Ngang' }]} /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="isActive" label="Đang dùng" valuePropName="checked"><Switch /></Form.Item></Col>
+          <Col xs={12} md={6}><Form.Item name="isDefault" label="Mặc định" valuePropName="checked"><Switch /></Form.Item></Col>
+        </Row>
+      </Form>
+    </Panel>
+  )
+}
+
+type FieldSelection = { sectionId: string; fieldId: string } | null
+
+function FieldTile({
+  field,
+  columns,
+  sectionId,
+  selectedField,
+  onSelect,
+  onFieldDrop
+}: {
+  field: FieldSchema
+  columns: number
+  sectionId: string
+  selectedField: FieldSelection
+  onSelect: (selection: Exclude<FieldSelection, null>) => void
+  onFieldDrop: (event: React.DragEvent, sectionId: string, fieldId: string) => void
+}) {
+  const isSelected = selectedField?.sectionId === sectionId && selectedField?.fieldId === field.id
+  return (
+    <div
+      draggable
+      onDragStart={event => {
+        event.stopPropagation()
+        event.dataTransfer.setData('source-section-id', sectionId)
+        event.dataTransfer.setData('source-field-id', field.id)
+      }}
+      onDragOver={event => event.preventDefault()}
+      onDrop={event => onFieldDrop(event, sectionId, field.id)}
+      onClick={() => onSelect({ sectionId, fieldId: field.id })}
+      style={{
+        gridColumn: `span ${Math.max(1, Math.min(field.span || 1, columns))}`,
+        border: isSelected ? '1px solid #1677ff' : '1px solid #d9d9d9',
+        boxShadow: isSelected ? '0 0 0 2px rgba(22, 119, 255, 0.12)' : undefined,
+        borderRadius: 8,
+        padding: 9,
+        background: '#fff',
+        cursor: 'grab'
+      }}
+    >
+      <Space direction="vertical" size={2} style={{ width: '100%' }}>
+        <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+          <Text strong>{field.label}</Text>
+          <Badge count={field.type || 'text'} style={{ backgroundColor: '#64748b' }} />
+        </Space>
+        <Text type="secondary" ellipsis>{field.path || field.value || 'Không có path'}</Text>
+        <Text type="secondary">span {field.span || 1}</Text>
+      </Space>
+    </div>
+  )
+}
+
+function FieldDropGrid({
+  sectionId,
+  columns,
+  fields,
+  emptyText,
+  selectedField,
+  onDrop,
+  onFieldDrop,
+  onSelect,
+  minHeight = 118,
+  background
+}: {
+  sectionId: string
+  columns: number
+  fields: FieldSchema[]
+  emptyText: string
+  selectedField: FieldSelection
+  onDrop: (event: React.DragEvent, sectionId: string) => void
+  onFieldDrop: (event: React.DragEvent, sectionId: string, fieldId: string) => void
+  onSelect: (selection: Exclude<FieldSelection, null>) => void
+  minHeight?: number
+  background?: string
+}) {
+  return (
+    <div
+      onDragOver={event => event.preventDefault()}
+      onDrop={event => onDrop(event, sectionId)}
+      style={{ minHeight, padding: 10, display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 8, background }}
+    >
+      {fields.map(field => (
+        <FieldTile
+          key={field.id}
+          field={field}
+          columns={columns}
+          sectionId={sectionId}
+          selectedField={selectedField}
+          onSelect={onSelect}
+          onFieldDrop={onFieldDrop}
+        />
+      ))}
+      {!fields.length && (
+        <div style={{ gridColumn: `span ${columns}`, border: '1px dashed #aab7c4', borderRadius: 8, padding: 18, textAlign: 'center', background: '#fff' }}>
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HeaderDesigner({
+  header,
+  columns,
+  selectedField,
+  onHeaderChange,
+  onDrop,
+  onFieldDrop,
+  onSelect
+}: {
+  header: HeaderSchema
+  columns: number
+  selectedField: FieldSelection
+  onHeaderChange: (patch: Partial<HeaderSchema>) => void
+  onDrop: (event: React.DragEvent, sectionId: string) => void
+  onFieldDrop: (event: React.DragEvent, sectionId: string, fieldId: string) => void
+  onSelect: (selection: Exclude<FieldSelection, null>) => void
+}) {
+  return (
+    <div style={{ border: '1px solid #d9e2ec', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 10, borderBottom: '1px solid #e8eef5', background: '#fbfcfe' }}>
+        <Text strong>Header mẫu in</Text>
+        <Switch size="small" checkedChildren="Kẻ line" unCheckedChildren="Không line" checked={header.showBorder !== false} onChange={checked => onHeaderChange({ showBorder: checked })} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', borderBottom: '1px solid #eef0f2' }}>
+        <Text type="secondary">Kéo field vào vùng header, sau đó chỉnh label, path, span và kiểu hiển thị ở panel bên phải.</Text>
+        <Space>
+          <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>Cột</Text>
+          <InputNumber min={1} max={24} size="small" value={columns} onChange={value => onHeaderChange({ columns: Number(value || 12) })} />
+        </Space>
+      </div>
+      <FieldDropGrid
+        sectionId={HEADER_SECTION_ID}
+        columns={columns}
+        fields={header.fields || []}
+        emptyText="Kéo field vào đây để tự thiết kế header"
+        selectedField={selectedField}
+        onDrop={onDrop}
+        onFieldDrop={onFieldDrop}
+        onSelect={onSelect}
+        minHeight={138}
+        background="#fbfcfe"
+      />
+    </div>
+  )
+}
+
+function SectionDesigner({
+  section,
+  selectedField,
+  onSectionChange,
+  onRemove,
+  onDrop,
+  onFieldDrop,
+  onSelect
+}: {
+  section: SectionSchema
+  selectedField: FieldSelection
+  onSectionChange: (sectionId: string, patch: Partial<SectionSchema>) => void
+  onRemove: (sectionId: string) => void
+  onDrop: (event: React.DragEvent, sectionId: string) => void
+  onFieldDrop: (event: React.DragEvent, sectionId: string, fieldId: string) => void
+  onSelect: (selection: Exclude<FieldSelection, null>) => void
+}) {
+  return (
+    <div style={{ border: '1px solid #d9e2ec', borderRadius: 10, background: '#fbfcfe', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderBottom: '1px solid #e8eef5', background: '#fff' }}>
+        <Input value={section.title} onChange={event => onSectionChange(section.id, { title: event.target.value })} />
+        <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>Cột</Text>
+        <InputNumber min={1} max={4} size="small" value={section.columns} onChange={value => onSectionChange(section.id, { columns: Number(value || 1) })} />
+        <Tooltip title="Xoá section">
+          <Button danger size="small" icon={<DeleteOutlined />} onClick={() => onRemove(section.id)} />
+        </Tooltip>
+      </div>
+      <FieldDropGrid
+        sectionId={section.id}
+        columns={section.columns}
+        fields={section.fields}
+        emptyText="Kéo field từ thanh bên trái vào section này"
+        selectedField={selectedField}
+        onDrop={onDrop}
+        onFieldDrop={onFieldDrop}
+        onSelect={onSelect}
+      />
+    </div>
+  )
+}
+
+function FieldPropertiesPanel({
+  field,
+  maxSpan,
+  onFieldChange,
+  onRemoveField,
+  onOptionChange,
+  onOptionAdd,
+  onOptionRemove,
+  onTableColumnChange,
+  onTableColumnAdd,
+  onTableColumnRemove,
+  onRepeaterItemChange,
+  onRepeaterItemAdd,
+  onRepeaterItemRemove
+}: {
+  field: FieldSchema | null
+  maxSpan: number
+  onFieldChange: (patch: Partial<FieldSchema>) => void
+  onRemoveField: () => void
+  onOptionChange: (index: number, patch: Partial<{ label: string; value: string }>) => void
+  onOptionAdd: () => void
+  onOptionRemove: (index: number) => void
+  onTableColumnChange: (index: number, patch: Partial<{ label: string; path: string; type: string; width: number }>) => void
+  onTableColumnAdd: () => void
+  onTableColumnRemove: (index: number) => void
+  onRepeaterItemChange: (index: number, patch: Partial<FieldSchema>) => void
+  onRepeaterItemAdd: () => void
+  onRepeaterItemRemove: (index: number) => void
+}) {
+  return (
+    <Panel title="Thuộc tính field">
+      {field ? (
+        <Space direction="vertical" style={{ width: '100%' }} size={10}>
+          <Tag color="blue">{field.type || 'text'}</Tag>
+          <Input addonBefore="Label" value={field.label} onChange={event => onFieldChange({ label: event.target.value })} />
+          <Input addonBefore="Path" value={field.path} onChange={event => onFieldChange({ path: event.target.value })} />
+          <Input addonBefore="Tĩnh" value={field.value} onChange={event => onFieldChange({ value: event.target.value })} />
+          <Input addonBefore="Đơn vị" value={field.unit} onChange={event => onFieldChange({ unit: event.target.value })} />
+          <InputNumber addonBefore="Span" min={1} max={maxSpan} value={field.span || 1} onChange={value => onFieldChange({ span: Number(value || 1) })} style={{ width: '100%' }} />
+          <Select value={field.type || 'text'} onChange={value => onFieldChange({ type: value })} options={FIELD_TYPES} />
+          <Select
+            value={field.align || 'left'}
+            onChange={value => onFieldChange({ align: value })}
+            options={[
+              { value: 'left', label: 'Canh trái' },
+              { value: 'center', label: 'Canh giữa' },
+              { value: 'right', label: 'Canh phải' }
+            ]}
+          />
+          <Divider orientation="left" plain>Kiểu chữ</Divider>
+          <InputNumber
+            addonBefore="Font size"
+            min={6}
+            max={72}
+            value={field.fontSize}
+            placeholder="Mặc định"
+            onChange={value => onFieldChange({ fontSize: value ? Number(value) : undefined })}
+            style={{ width: '100%' }}
+          />
+          <Select
+            value={field.fontWeight || 'bold'}
+            onChange={value => onFieldChange({ fontWeight: value })}
+            options={[
+              { value: 'normal', label: 'Thường' },
+              { value: 'bold', label: 'In đậm' }
+            ]}
+          />
+          <Select
+            value={field.fontStyle || 'normal'}
+            onChange={value => onFieldChange({ fontStyle: value })}
+            options={[
+              { value: 'normal', label: 'Không nghiêng' },
+              { value: 'italic', label: 'In nghiêng' }
+            ]}
+          />
+          <Select
+            value={field.textDecoration || 'none'}
+            onChange={value => onFieldChange({ textDecoration: value })}
+            options={[
+              { value: 'none', label: 'Không gạch chân' },
+              { value: 'underline', label: 'Gạch chân' }
+            ]}
+          />
+
+          {['image', 'logo', 'imageList'].includes(field.type || '') && (
+            <>
+              <Divider orientation="left" plain>Hình ảnh</Divider>
+              <Input addonBefore="Alt" value={field.alt} onChange={event => onFieldChange({ alt: event.target.value })} />
+              <Space style={{ width: '100%' }}>
+                <InputNumber addonBefore="Rộng" min={20} max={1000} value={field.width || 120} onChange={value => onFieldChange({ width: Number(value || 120) })} style={{ width: '50%' }} />
+                <InputNumber addonBefore="Cao" min={20} max={1000} value={field.height || 90} onChange={value => onFieldChange({ height: Number(value || 90) })} style={{ width: '50%' }} />
+              </Space>
+              <Select
+                value={field.fit || 'contain'}
+                onChange={value => onFieldChange({ fit: value })}
+                options={[
+                  { value: 'contain', label: 'Vừa khung' },
+                  { value: 'cover', label: 'Phủ khung' },
+                  { value: 'fill', label: 'Kéo giãn' }
+                ]}
+              />
+            </>
+          )}
+
+          {['select', 'radio'].includes(field.type || '') && (
+            <>
+              <Divider orientation="left" plain>Lựa chọn</Divider>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {(field.options || []).map((option, index) => (
+                  <Space key={`${option.value}-${index}`} align="start" style={{ width: '100%' }}>
+                    <Input placeholder="Label" value={option.label} onChange={event => onOptionChange(index, { label: event.target.value })} />
+                    <Input placeholder="Value" value={option.value} onChange={event => onOptionChange(index, { value: event.target.value })} />
+                    <Button danger size="small" icon={<DeleteOutlined />} onClick={() => onOptionRemove(index)} />
+                  </Space>
+                ))}
+                <Button size="small" block onClick={onOptionAdd}>Thêm lựa chọn</Button>
+              </Space>
+            </>
+          )}
+
+          {field.type === 'table' && (
+            <>
+              <Divider orientation="left" plain>Cột bảng</Divider>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {(field.columns || []).map((column, index) => (
+                  <Space key={`${column.path}-${index}`} align="start" style={{ width: '100%' }}>
+                    <Input placeholder="Label" value={column.label} onChange={event => onTableColumnChange(index, { label: event.target.value })} />
+                    <Input placeholder="Path" value={column.path} onChange={event => onTableColumnChange(index, { path: event.target.value })} />
+                    <Select value={column.type || 'text'} style={{ width: 105 }} onChange={value => onTableColumnChange(index, { type: value })} options={SIMPLE_COLUMN_TYPES} />
+                    <Button danger size="small" icon={<DeleteOutlined />} onClick={() => onTableColumnRemove(index)} />
+                  </Space>
+                ))}
+                <Button size="small" block onClick={onTableColumnAdd}>Thêm cột</Button>
+              </Space>
+            </>
+          )}
+
+          {field.type === 'repeater' && (
+            <>
+              <Divider orientation="left" plain>Field trong nhóm lặp</Divider>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {(field.items || []).map((item, index) => (
+                  <Space key={item.id} align="start" style={{ width: '100%' }}>
+                    <Input placeholder="Label" value={item.label} onChange={event => onRepeaterItemChange(index, { label: event.target.value })} />
+                    <Input placeholder="Path" value={item.path} onChange={event => onRepeaterItemChange(index, { path: event.target.value })} />
+                    <Select value={item.type || 'text'} style={{ width: 105 }} onChange={value => onRepeaterItemChange(index, { type: value })} options={FIELD_TYPES.filter(item => !['table', 'repeater'].includes(item.value))} />
+                    <Button danger size="small" icon={<DeleteOutlined />} onClick={() => onRepeaterItemRemove(index)} />
+                  </Space>
+                ))}
+                <Button size="small" block onClick={onRepeaterItemAdd}>Thêm field</Button>
+              </Space>
+            </>
+          )}
+
+          <Divider />
+          <Button danger icon={<DeleteOutlined />} onClick={onRemoveField}>Xoá field</Button>
+        </Space>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chọn một field trong canvas để chỉnh thuộc tính" />
+      )}
+    </Panel>
   )
 }
 
@@ -521,16 +1041,38 @@ export default function PrintTemplateEditor(): JSX.Element {
 
   const selectedFieldValue = React.useMemo(() => {
     if (!selectedField) return null
+    if (selectedField.sectionId === HEADER_SECTION_ID) {
+      return layout.header.fields?.find(item => item.id === selectedField.fieldId) || null
+    }
     const section = layout.sections.find(item => item.id === selectedField.sectionId)
     return section?.fields.find(item => item.id === selectedField.fieldId) || null
-  }, [layout.sections, selectedField])
+  }, [layout.header.fields, layout.sections, selectedField])
 
   const updateLayout = (updater: (current: PrintLayoutSchema) => PrintLayoutSchema) => {
-    setLayout(current => updater({ ...current, sections: current.sections.map(section => ({ ...section, fields: [...section.fields] })) }))
+    setLayout(current => updater({ ...current, header: { ...current.header }, sections: current.sections.map(section => ({ ...section, fields: [...section.fields] })) }))
+  }
+
+  const updateHeader = (patch: Partial<HeaderSchema>) => {
+    updateLayout(current => {
+      const header = { ...current.header, ...patch }
+      return {
+        ...current,
+        header,
+        title: header.title || current.title,
+        subtitle: header.subtitle || current.subtitle
+      }
+    })
   }
 
   const addSection = () => {
     updateLayout(current => ({ ...current, sections: [...current.sections, { id: createId(), title: 'Nhóm thông tin mới', columns: 2, fields: [] }] }))
+  }
+
+  const updateSection = (sectionId: string, patch: Partial<SectionSchema>) => {
+    updateLayout(current => ({
+      ...current,
+      sections: current.sections.map(section => section.id === sectionId ? { ...section, ...patch } : section)
+    }))
   }
 
   const removeSection = (sectionId: string) => {
@@ -556,7 +1098,11 @@ export default function PrintTemplateEditor(): JSX.Element {
       align: palette.align as FieldSchema['align'],
       alt: palette.alt
     })
-    updateLayout(current => ({ ...current, sections: current.sections.map(section => section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section) }))
+    if (sectionId === HEADER_SECTION_ID) {
+      updateLayout(current => ({ ...current, header: { ...current.header, fields: [...(current.header.fields || []), field] } }))
+    } else {
+      updateLayout(current => ({ ...current, sections: current.sections.map(section => section.id === sectionId ? { ...section, fields: [...section.fields, field] } : section) }))
+    }
     setSelectedField({ sectionId, fieldId: field.id })
   }
 
@@ -565,6 +1111,13 @@ export default function PrintTemplateEditor(): JSX.Element {
 
     let movingField: FieldSchema | undefined
     updateLayout(current => {
+      const headerFields = current.header.fields || []
+      const headerWithoutField = sourceSectionId === HEADER_SECTION_ID
+        ? headerFields.filter(field => {
+          if (field.id === sourceFieldId) movingField = field
+          return field.id !== sourceFieldId
+        })
+        : headerFields
       const sectionsWithoutField = current.sections.map(section => {
         if (section.id !== sourceSectionId) return section
         movingField = section.fields.find(field => field.id === sourceFieldId)
@@ -573,8 +1126,17 @@ export default function PrintTemplateEditor(): JSX.Element {
 
       if (!movingField) return current
 
+      if (targetSectionId === HEADER_SECTION_ID) {
+        const fields = [...headerWithoutField]
+        const targetIndex = targetFieldId ? fields.findIndex(field => field.id === targetFieldId) : -1
+        if (targetIndex >= 0) fields.splice(targetIndex, 0, movingField)
+        else fields.push(movingField)
+        return { ...current, header: { ...current.header, fields }, sections: sectionsWithoutField }
+      }
+
       return {
         ...current,
+        header: { ...current.header, fields: headerWithoutField },
         sections: sectionsWithoutField.map(section => {
           if (section.id !== targetSectionId) return section
           const fields = [...section.fields]
@@ -594,6 +1156,16 @@ export default function PrintTemplateEditor(): JSX.Element {
 
   const updateField = (patch: Partial<FieldSchema>) => {
     if (!selectedField) return
+    if (selectedField.sectionId === HEADER_SECTION_ID) {
+      updateLayout(current => ({
+        ...current,
+        header: {
+          ...current.header,
+          fields: (current.header.fields || []).map(field => field.id === selectedField.fieldId ? { ...field, ...patch } : field)
+        }
+      }))
+      return
+    }
     updateLayout(current => ({
       ...current,
       sections: current.sections.map(section => {
@@ -605,6 +1177,14 @@ export default function PrintTemplateEditor(): JSX.Element {
 
   const removeField = () => {
     if (!selectedField) return
+    if (selectedField.sectionId === HEADER_SECTION_ID) {
+      updateLayout(current => ({
+        ...current,
+        header: { ...current.header, fields: (current.header.fields || []).filter(field => field.id !== selectedField.fieldId) }
+      }))
+      setSelectedField(null)
+      return
+    }
     updateLayout(current => ({
       ...current,
       sections: current.sections.map(section => section.id === selectedField.sectionId ? { ...section, fields: section.fields.filter(field => field.id !== selectedField.fieldId) } : section)
@@ -681,6 +1261,18 @@ export default function PrintTemplateEditor(): JSX.Element {
       alt: palette.alt
     })
 
+    if (targetSectionId === HEADER_SECTION_ID) {
+      updateLayout(current => {
+        const fields = [...(current.header.fields || [])]
+        const targetIndex = fields.findIndex(item => item.id === targetFieldId)
+        if (targetIndex >= 0) fields.splice(targetIndex, 0, field)
+        else fields.push(field)
+        return { ...current, header: { ...current.header, fields } }
+      })
+      setSelectedField({ sectionId: targetSectionId, fieldId: field.id })
+      return
+    }
+
     updateLayout(current => ({
       ...current,
       sections: current.sections.map(section => {
@@ -704,11 +1296,15 @@ export default function PrintTemplateEditor(): JSX.Element {
     saveMutation.mutate(values)
   }
 
-  const fieldCount = layout.sections.reduce((total, section) => total + section.fields.length, 0)
+  const fieldCount = (layout.header.fields?.length || 0) + layout.sections.reduce((total, section) => total + section.fields.length, 0)
+  const headerColumns = Math.max(1, Number(layout.header.columns || 12))
+  const selectedFieldMaxSpan = selectedField?.sectionId === HEADER_SECTION_ID
+    ? headerColumns
+    : layout.sections.find(section => section.id === selectedField?.sectionId)?.columns || 4
 
   return (
-    <div style={{ minHeight: '100%', background: '#f6f7f9' }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 16px' }}>
+    <div style={{ height: 'calc(100vh - 96px)', minHeight: 640, background: '#f6f7f9', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: '0 0 auto', zIndex: 20, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <Space>
             <Tooltip title="Quay lại danh sách">
@@ -730,45 +1326,17 @@ export default function PrintTemplateEditor(): JSX.Element {
         </div>
       </div>
 
-      <div style={{ padding: 16 }}>
-        <Row gutter={[12, 12]} align="top">
-          <Col xs={24} xl={5}>
-            <div style={{ position: 'sticky', top: 76 }}>
-              <Panel title="Thành phần">
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {FIELD_PALETTE.map(item => (
-                    <div
-                      key={item.type}
-                      draggable
-                      onDragStart={event => event.dataTransfer.setData('field-type', item.type)}
-                      style={{ border: '1px solid #d9d9d9', borderRadius: 8, padding: '9px 10px', cursor: 'grab', background: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}
-                    >
-                      <span style={{ color: '#1677ff' }}>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </Panel>
+      <div style={{ flex: 1, minHeight: 0, padding: 16, overflow: 'hidden' }}>
+        <Row gutter={[12, 12]} align="top" style={{ height: '100%' }}>
+          <Col xs={24} xl={5} style={{ height: '100%', minHeight: 0 }}>
+            <div style={{ height: '100%', overflowY: 'auto' }}>
+              <PalettePanel />
             </div>
           </Col>
 
-          <Col xs={24} xl={13}>
+          <Col xs={24} xl={13} style={{ height: '100%', minHeight: 0, overflowY: 'auto', paddingBottom: 16 }}>
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
-              <Panel title="Thông tin mẫu">
-                <Form form={form} layout="vertical">
-                  <Row gutter={10}>
-                    <Col xs={24} md={8}><Form.Item name="code" label="Mã mẫu" rules={[{ required: true }]}><Input placeholder="VD: BA_VAO_VIEN" /></Form.Item></Col>
-                    <Col xs={24} md={16}><Form.Item name="name" label="Tên mẫu" rules={[{ required: true }]}><Input placeholder="Tên biểu mẫu" /></Form.Item></Col>
-                    <Col xs={24}><Form.Item name="description" label="Mô tả"><Input placeholder="Mục đích sử dụng hoặc ghi chú nội bộ" /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="templateGroup" label="Nhóm"><Input /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="version" label="Phiên bản"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="paperSize" label="Khổ giấy"><Select options={[{ value: 'A4', label: 'A4' }, { value: 'A5', label: 'A5' }]} /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="orientation" label="Hướng giấy"><Select options={[{ value: 'Portrait', label: 'Dọc' }, { value: 'Landscape', label: 'Ngang' }]} /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="isActive" label="Đang dùng" valuePropName="checked"><Switch /></Form.Item></Col>
-                    <Col xs={12} md={6}><Form.Item name="isDefault" label="Mặc định" valuePropName="checked"><Switch /></Form.Item></Col>
-                  </Row>
-                </Form>
-              </Panel>
+              <TemplateInfoPanel form={form} />
 
               <Panel>
                 <Tabs
@@ -778,65 +1346,26 @@ export default function PrintTemplateEditor(): JSX.Element {
                       label: 'Thiết kế',
                       children: (
                         <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                            <Input value={layout.title} onChange={event => setLayout({ ...layout, title: event.target.value })} placeholder="Tiêu đề mẫu in" />
-                            <Input value={layout.subtitle} onChange={event => setLayout({ ...layout, subtitle: event.target.value })} placeholder="Phụ đề, ví dụ {{hospitalName}}" />
-                          </div>
+                          <HeaderDesigner
+                            header={layout.header}
+                            columns={headerColumns}
+                            selectedField={selectedField}
+                            onHeaderChange={updateHeader}
+                            onDrop={handleDrop}
+                            onFieldDrop={handleFieldDrop}
+                            onSelect={setSelectedField}
+                          />
                           {layout.sections.map(section => (
-                            <div
+                            <SectionDesigner
                               key={section.id}
-                              onDragOver={event => event.preventDefault()}
-                              onDrop={event => handleDrop(event, section.id)}
-                              style={{ border: '1px solid #d9e2ec', borderRadius: 10, background: '#fbfcfe', overflow: 'hidden' }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, borderBottom: '1px solid #e8eef5', background: '#fff' }}>
-                                <Input value={section.title} onChange={event => updateLayout(current => ({ ...current, sections: current.sections.map(item => item.id === section.id ? { ...item, title: event.target.value } : item) }))} />
-                                <Text type="secondary" style={{ whiteSpace: 'nowrap' }}>Cột</Text>
-                                <InputNumber min={1} max={4} size="small" value={section.columns} onChange={value => updateLayout(current => ({ ...current, sections: current.sections.map(item => item.id === section.id ? { ...item, columns: Number(value || 1) } : item) }))} />
-                                <Tooltip title="Xoá section">
-                                  <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeSection(section.id)} />
-                                </Tooltip>
-                              </div>
-                              <div style={{ minHeight: 118, padding: 10, display: 'grid', gridTemplateColumns: `repeat(${section.columns}, minmax(0, 1fr))`, gap: 8 }}>
-                                {section.fields.map(field => (
-                                  <div
-                                    key={field.id}
-                                    draggable
-                                    onDragStart={event => {
-                                      event.stopPropagation()
-                                      event.dataTransfer.setData('source-section-id', section.id)
-                                      event.dataTransfer.setData('source-field-id', field.id)
-                                    }}
-                                    onDragOver={event => event.preventDefault()}
-                                    onDrop={event => handleFieldDrop(event, section.id, field.id)}
-                                    onClick={() => setSelectedField({ sectionId: section.id, fieldId: field.id })}
-                                    style={{
-                                      gridColumn: `span ${Math.max(1, Math.min(field.span || 1, section.columns))}`,
-                                      border: selectedField?.fieldId === field.id ? '1px solid #1677ff' : '1px solid #d9d9d9',
-                                      boxShadow: selectedField?.fieldId === field.id ? '0 0 0 2px rgba(22, 119, 255, 0.12)' : undefined,
-                                      borderRadius: 8,
-                                      padding: 9,
-                                      background: '#fff',
-                                      cursor: 'grab'
-                                    }}
-                                  >
-                                    <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                                      <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                                        <Text strong>{field.label}</Text>
-                                        <Badge count={field.type || 'text'} style={{ backgroundColor: '#64748b' }} />
-                                      </Space>
-                                      <Text type="secondary" ellipsis>{field.path || field.value || 'Không có path'}</Text>
-                                      <Text type="secondary">span {field.span || 1}</Text>
-                                    </Space>
-                                  </div>
-                                ))}
-                                {!section.fields.length && (
-                                  <div style={{ gridColumn: `span ${section.columns}`, border: '1px dashed #aab7c4', borderRadius: 8, padding: 18, textAlign: 'center', background: '#fff' }}>
-                                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Kéo field từ thanh bên trái vào section này" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                              section={section}
+                              selectedField={selectedField}
+                              onSectionChange={updateSection}
+                              onRemove={removeSection}
+                              onDrop={handleDrop}
+                              onFieldDrop={handleFieldDrop}
+                              onSelect={setSelectedField}
+                            />
                           ))}
                         </Space>
                       )
@@ -850,105 +1379,23 @@ export default function PrintTemplateEditor(): JSX.Element {
             </Space>
           </Col>
 
-          <Col xs={24} xl={6}>
-            <div style={{ position: 'sticky', top: 76 }}>
-              <Panel title="Thuộc tính field">
-                {selectedFieldValue ? (
-                  <Space direction="vertical" style={{ width: '100%' }} size={10}>
-                    <Tag color="blue">{selectedFieldValue.type || 'text'}</Tag>
-                    <Input addonBefore="Label" value={selectedFieldValue.label} onChange={event => updateField({ label: event.target.value })} />
-                    <Input addonBefore="Path" value={selectedFieldValue.path} onChange={event => updateField({ path: event.target.value })} />
-                    <Input addonBefore="Tĩnh" value={selectedFieldValue.value} onChange={event => updateField({ value: event.target.value })} />
-                    <Input addonBefore="Đơn vị" value={selectedFieldValue.unit} onChange={event => updateField({ unit: event.target.value })} />
-                    <InputNumber addonBefore="Span" min={1} max={4} value={selectedFieldValue.span || 1} onChange={value => updateField({ span: Number(value || 1) })} style={{ width: '100%' }} />
-                    <Select value={selectedFieldValue.type || 'text'} onChange={value => updateField({ type: value })} options={FIELD_TYPES} />
-
-                    {['image', 'logo', 'imageList'].includes(selectedFieldValue.type || '') && (
-                      <>
-                        <Divider orientation="left" plain>Hình ảnh</Divider>
-                        <Input addonBefore="Alt" value={selectedFieldValue.alt} onChange={event => updateField({ alt: event.target.value })} />
-                        <Space style={{ width: '100%' }}>
-                          <InputNumber addonBefore="Rộng" min={20} max={1000} value={selectedFieldValue.width || 120} onChange={value => updateField({ width: Number(value || 120) })} style={{ width: '50%' }} />
-                          <InputNumber addonBefore="Cao" min={20} max={1000} value={selectedFieldValue.height || 90} onChange={value => updateField({ height: Number(value || 90) })} style={{ width: '50%' }} />
-                        </Space>
-                        <Select
-                          value={selectedFieldValue.fit || 'contain'}
-                          onChange={value => updateField({ fit: value })}
-                          options={[
-                            { value: 'contain', label: 'Vừa khung' },
-                            { value: 'cover', label: 'Phủ khung' },
-                            { value: 'fill', label: 'Kéo giãn' }
-                          ]}
-                        />
-                        <Select
-                          value={selectedFieldValue.align || 'left'}
-                          onChange={value => updateField({ align: value })}
-                          options={[
-                            { value: 'left', label: 'Trái' },
-                            { value: 'center', label: 'Giữa' },
-                            { value: 'right', label: 'Phải' }
-                          ]}
-                        />
-                      </>
-                    )}
-
-                    {['select', 'radio'].includes(selectedFieldValue.type || '') && (
-                      <>
-                        <Divider orientation="left" plain>Lựa chọn</Divider>
-                        <Space direction="vertical" style={{ width: '100%' }}>
-                          {(selectedFieldValue.options || []).map((option, index) => (
-                            <Space key={`${option.value}-${index}`} align="start" style={{ width: '100%' }}>
-                              <Input placeholder="Label" value={option.label} onChange={event => updateFieldOption(index, { label: event.target.value })} />
-                              <Input placeholder="Value" value={option.value} onChange={event => updateFieldOption(index, { value: event.target.value })} />
-                              <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeFieldOption(index)} />
-                            </Space>
-                          ))}
-                          <Button size="small" block onClick={addFieldOption}>Thêm lựa chọn</Button>
-                        </Space>
-                      </>
-                    )}
-
-                    {selectedFieldValue.type === 'table' && (
-                      <>
-                        <Divider orientation="left" plain>Cột bảng</Divider>
-                        <Space direction="vertical" style={{ width: '100%' }}>
-                          {(selectedFieldValue.columns || []).map((column, index) => (
-                            <Space key={`${column.path}-${index}`} align="start" style={{ width: '100%' }}>
-                              <Input placeholder="Label" value={column.label} onChange={event => updateTableColumn(index, { label: event.target.value })} />
-                              <Input placeholder="Path" value={column.path} onChange={event => updateTableColumn(index, { path: event.target.value })} />
-                              <Select value={column.type || 'text'} style={{ width: 105 }} onChange={value => updateTableColumn(index, { type: value })} options={SIMPLE_COLUMN_TYPES} />
-                              <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeTableColumn(index)} />
-                            </Space>
-                          ))}
-                          <Button size="small" block onClick={addTableColumn}>Thêm cột</Button>
-                        </Space>
-                      </>
-                    )}
-
-                    {selectedFieldValue.type === 'repeater' && (
-                      <>
-                        <Divider orientation="left" plain>Field trong nhóm lặp</Divider>
-                        <Space direction="vertical" style={{ width: '100%' }}>
-                          {(selectedFieldValue.items || []).map((item, index) => (
-                            <Space key={item.id} align="start" style={{ width: '100%' }}>
-                              <Input placeholder="Label" value={item.label} onChange={event => updateRepeaterItem(index, { label: event.target.value })} />
-                              <Input placeholder="Path" value={item.path} onChange={event => updateRepeaterItem(index, { path: event.target.value })} />
-                              <Select value={item.type || 'text'} style={{ width: 105 }} onChange={value => updateRepeaterItem(index, { type: value })} options={FIELD_TYPES.filter(item => !['table', 'repeater'].includes(item.value))} />
-                              <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeRepeaterItem(index)} />
-                            </Space>
-                          ))}
-                          <Button size="small" block onClick={addRepeaterItem}>Thêm field</Button>
-                        </Space>
-                      </>
-                    )}
-
-                    <Divider />
-                    <Button danger icon={<DeleteOutlined />} onClick={removeField}>Xoá field</Button>
-                  </Space>
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chọn một field trong canvas để chỉnh thuộc tính" />
-                )}
-              </Panel>
+          <Col xs={24} xl={6} style={{ height: '100%', minHeight: 0 }}>
+            <div style={{ height: '100%', overflowY: 'auto' }}>
+              <FieldPropertiesPanel
+                field={selectedFieldValue}
+                maxSpan={selectedFieldMaxSpan}
+                onFieldChange={updateField}
+                onRemoveField={removeField}
+                onOptionChange={updateFieldOption}
+                onOptionAdd={addFieldOption}
+                onOptionRemove={removeFieldOption}
+                onTableColumnChange={updateTableColumn}
+                onTableColumnAdd={addTableColumn}
+                onTableColumnRemove={removeTableColumn}
+                onRepeaterItemChange={updateRepeaterItem}
+                onRepeaterItemAdd={addRepeaterItem}
+                onRepeaterItemRemove={removeRepeaterItem}
+              />
             </div>
           </Col>
         </Row>

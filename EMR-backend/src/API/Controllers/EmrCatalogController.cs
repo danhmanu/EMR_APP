@@ -62,7 +62,7 @@ namespace EMR.Api.Controllers
         {
             if (!medexalReceiveId.HasValue)
             {
-                return Ok(new { success = true, data = new List<EmrPatientRowDto>() });
+                return Ok(new { success = true, data = new List<EmrInpatientMedicalRecordDto>() });
             }
 
             var from = string.IsNullOrWhiteSpace(dateFrom)
@@ -75,7 +75,7 @@ namespace EMR.Api.Controllers
                 ? "ListPatientOut"
                 : "ListPatientIn";
 
-            var request = new EmrInpatientMedicalListRequest
+            var request = new RequestDataCommon
             {
                 LstPara = new List<Parameter>
                 {
@@ -116,8 +116,7 @@ namespace EMR.Api.Controllers
             var upstream = JsonConvert.DeserializeObject<APIResponse>(jsonresult);
             var dataJson = upstream?.Data == null ? "[]" : JsonConvert.SerializeObject(upstream.Data);
             var patients = JsonConvert.DeserializeObject<List<EmrInpatientMedicalRecordDto>>(dataJson) ?? new List<EmrInpatientMedicalRecordDto>();
-            var rows = patients.Select(EmrPatientRowDto.FromMedicalRecord).ToList();
-            return Ok(new { success = true, data = rows });
+            return Ok(new { success = true, data = patients });
         }
     }
 
@@ -152,7 +151,7 @@ public enum TypeOfValue
     Guid = 5
 }
 
-    public class EmrInpatientMedicalListRequest
+    public class RequestDataCommon
     {
         [JsonProperty("lstPara")]
         public List<Parameter> LstPara { get; set; } = new();
@@ -301,74 +300,6 @@ public enum TypeOfValue
         private int IdRaw
         {
             set => Id = value;
-        }
-    }
-
-    public class EmrPatientRowDto
-    {
-        public string EncounterId { get; set; } = string.Empty;
-        public string EncounterCode { get; set; } = string.Empty;
-        public string PatientId { get; set; } = string.Empty;
-        public string HospCode { get; set; } = string.Empty;
-        public string PatientCode { get; set; } = string.Empty;
-        public string FullName { get; set; } = string.Empty;
-        public string Gender { get; set; } = string.Empty;
-        public string? DateOfBirth { get; set; }
-        public string? Phone { get; set; }
-        public string? Address { get; set; }
-        public string? InsuranceNumber { get; set; }
-        public string TreatmentType { get; set; } = "Noi tru";
-        public string Department { get; set; } = string.Empty;
-        public string? Room { get; set; }
-        public string? Bed { get; set; }
-        public string? AttendingDoctor { get; set; }
-        public string? AdmissionDate { get; set; }
-        public string Status { get; set; } = string.Empty;
-        public string? Diagnosis { get; set; }
-        public string? ChiefComplaint { get; set; }
-        public bool IsLocked { get; set; }
-        public bool IsSummarized { get; set; }
-        public EmrInpatientMedicalRecordDto Raw { get; set; } = new();
-
-        public static EmrPatientRowDto FromMedicalRecord(EmrInpatientMedicalRecordDto source)
-        {
-            return new EmrPatientRowDto
-            {
-                EncounterId = source.IdLine ?? source.MedicalRecordId ?? source.TransferInfoId ?? string.Empty,
-                EncounterCode = source.HospitalizationCode ?? source.EmeCode ?? string.Empty,
-                PatientId = source.PatId ?? string.Empty,
-                HospCode = source.HospCode ?? string.Empty,
-                PatientCode = source.MedicalCode ?? source.RecordCode ?? string.Empty,
-                FullName = source.FullName ?? string.Empty,
-                Gender = source.Sex == 25521 ? "Nam" : source.Sex == 25522 ? "Nu" : string.Empty,
-                DateOfBirth = FormatBirthDate(source),
-                Phone = source.Phone,
-                Address = source.Address,
-                InsuranceNumber = source.NoHi,
-                Department = source.NameMedicalType ?? string.Empty,
-                Room = source.RoomName,
-                Bed = source.BedName ?? source.BebName,
-                AttendingDoctor = source.DoctorName,
-                AdmissionDate = source.HospitalizationDate?.ToString("yyyy-MM-dd HH:mm:ss"),
-                Status = source.StatusProfileCode ?? source.StatusName ?? source.StatusTransferCode ?? string.Empty,
-                Diagnosis = string.IsNullOrWhiteSpace(source.IcdIn) ? source.Reason : source.IcdIn,
-                ChiefComplaint = source.Reason,
-                IsLocked = false,
-                IsSummarized = string.Equals(source.StatusProfileCode, "DaTongKetBenhAn", StringComparison.OrdinalIgnoreCase),
-                Raw = source
-            };
-        }
-
-        private static string? FormatBirthDate(EmrInpatientMedicalRecordDto source)
-        {
-            if (!source.YearBr.HasValue)
-            {
-                return null;
-            }
-
-            var month = source.MonthBr.GetValueOrDefault(1);
-            var day = source.DayBr.GetValueOrDefault(1);
-            return $"{source.YearBr.Value:D4}-{Math.Clamp(month, 1, 12):D2}-{Math.Clamp(day, 1, 31):D2}";
         }
     }
 

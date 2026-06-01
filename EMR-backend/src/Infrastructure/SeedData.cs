@@ -111,6 +111,7 @@ namespace EMR.Infrastructure
             SeedSystemConfigurations(db);
             SeedSysApis(db);
             SeedEmrPrintTemplates(db);
+            SeedEmrFormTemplates(db);
             SeedPermissionItems(db);
             DisableAssetManagementMenus(db);
         }
@@ -204,6 +205,76 @@ namespace EMR.Infrastructure
     ""diagnosis"": ""Chẩn đoán vào viện""
   }
 }"
+            });
+
+            db.SaveChanges();
+        }
+
+        private static void SeedEmrFormTemplates(AppDbContext db)
+        {
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS `emr_form_templates` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `Code` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+                    `Name` varchar(250) CHARACTER SET utf8mb4 NOT NULL,
+                    `Description` varchar(500) CHARACTER SET utf8mb4 NULL,
+                    `TemplateGroup` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+                    `PrintTemplateCode` varchar(100) CHARACTER SET utf8mb4 NULL,
+                    `Version` int NOT NULL,
+                    `LayoutJson` longtext CHARACTER SET utf8mb4 NOT NULL,
+                    `DefaultDataJson` longtext CHARACTER SET utf8mb4 NULL,
+                    `IsActive` tinyint(1) NOT NULL,
+                    `IsDefault` tinyint(1) NOT NULL,
+                    `CreatedAt` datetime(6) NOT NULL,
+                    `UpdatedAt` datetime(6) NOT NULL,
+                    CONSTRAINT `PK_emr_form_templates` PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_emr_form_templates_Code` (`Code`)
+                ) CHARACTER SET=utf8mb4;");
+
+            if (db.EmrFormTemplates.Any(x => x.Code == "BA_VAO_VIEN_FORM"))
+            {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            db.EmrFormTemplates.Add(new EmrFormTemplate
+            {
+                Code = "BA_VAO_VIEN_FORM",
+                Name = "Form nhập bệnh án vào viện",
+                Description = "Cấu hình form nhập liệu mẫu cho bệnh án vào viện.",
+                TemplateGroup = "EMR",
+                PrintTemplateCode = "BA_VAO_VIEN",
+                Version = 1,
+                IsActive = true,
+                IsDefault = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+                LayoutJson = @"{
+  ""sections"": [
+    {
+      ""title"": ""Thông tin hành chính"",
+      ""columns"": 2,
+      ""fields"": [
+        { ""label"": ""Họ và tên"", ""path"": ""patient.fullName"", ""type"": ""text"", ""required"": true },
+        { ""label"": ""Mã bệnh nhân"", ""path"": ""patient.hospCode"", ""type"": ""text"", ""required"": true },
+        { ""label"": ""Ngày sinh"", ""path"": ""patient.dateOfBirth"", ""type"": ""date"" },
+        { ""label"": ""Giới tính"", ""path"": ""patient.gender"", ""type"": ""radio"", ""options"": [{ ""label"": ""Nam"", ""value"": ""Nam"" }, { ""label"": ""Nữ"", ""value"": ""Nu"" }] },
+        { ""label"": ""Địa chỉ"", ""path"": ""patient.address"", ""type"": ""textarea"", ""span"": 2 }
+      ]
+    },
+    {
+      ""title"": ""Thông tin điều trị"",
+      ""columns"": 2,
+      ""fields"": [
+        { ""label"": ""Khoa"", ""path"": ""patient.department"", ""type"": ""text"" },
+        { ""label"": ""Phòng/Giường"", ""path"": ""patient.roomBed"", ""type"": ""text"" },
+        { ""label"": ""Ngày vào viện"", ""path"": ""patient.admissionDate"", ""type"": ""datetime"" },
+        { ""label"": ""Chẩn đoán"", ""path"": ""patient.diagnosis"", ""type"": ""textarea"", ""span"": 2 }
+      ]
+    }
+  ]
+}",
+                DefaultDataJson = @"{}"
             });
 
             db.SaveChanges();
@@ -608,6 +679,43 @@ namespace EMR.Infrastructure
                 {
                     RoleId = adminRoleForMenu.Id,
                     MenuItemId = emrPrintTemplatesMenu.Id
+                });
+                db.SaveChanges();
+            }
+
+            var emrFormTemplatesMenu = db.MenuItems.FirstOrDefault(m => m.Key == "emr-form-templates");
+            if (emrFormTemplatesMenu == null)
+            {
+                var settingsMenu = db.MenuItems.FirstOrDefault(m => m.Key == "settings");
+                emrFormTemplatesMenu = new MenuItem
+                {
+                    Key = "emr-form-templates",
+                    Title = "Cấu hình form nhập liệu",
+                    Link = "/emr/form-templates",
+                    Icon = "FormOutlined",
+                    DisplayOrder = 14,
+                    ParentMenuItemId = settingsMenu?.Id,
+                    IsDeleted = false
+                };
+                db.MenuItems.Add(emrFormTemplatesMenu);
+                db.SaveChanges();
+            }
+            else if (emrFormTemplatesMenu.Link != "/emr/form-templates" || emrFormTemplatesMenu.IsDeleted)
+            {
+                emrFormTemplatesMenu.Title = "Cấu hình form nhập liệu";
+                emrFormTemplatesMenu.Link = "/emr/form-templates";
+                emrFormTemplatesMenu.Icon = "FormOutlined";
+                emrFormTemplatesMenu.DisplayOrder = 14;
+                emrFormTemplatesMenu.IsDeleted = false;
+                db.SaveChanges();
+            }
+
+            if (adminRoleForMenu != null && !db.RoleMenuMaps.Any(rm => rm.RoleId == adminRoleForMenu.Id && rm.MenuItemId == emrFormTemplatesMenu.Id))
+            {
+                db.RoleMenuMaps.Add(new RoleMenuMap
+                {
+                    RoleId = adminRoleForMenu.Id,
+                    MenuItemId = emrFormTemplatesMenu.Id
                 });
                 db.SaveChanges();
             }

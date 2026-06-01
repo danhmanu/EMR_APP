@@ -19,6 +19,7 @@ namespace EMR.Infrastructure
         public DbSet<SystemConfiguration> SystemConfigurations { get; set; }
         public DbSet<SysApi> SysApis { get; set; }
         public DbSet<EmrPrintTemplate> EmrPrintTemplates { get; set; }
+        public DbSet<EmrFormTemplate> EmrFormTemplates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -109,6 +110,19 @@ namespace EMR.Infrastructure
                 entity.Property(x => x.Orientation).HasMaxLength(20).IsRequired();
                 entity.Property(x => x.LayoutJson).HasColumnType("longtext").IsRequired();
                 entity.Property(x => x.SampleDataJson).HasColumnType("longtext");
+            });
+
+            modelBuilder.Entity<EmrFormTemplate>(entity =>
+            {
+                entity.ToTable("emr_form_templates");
+                entity.HasIndex(x => x.Code).IsUnique();
+                entity.Property(x => x.Code).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.Name).HasMaxLength(250).IsRequired();
+                entity.Property(x => x.Description).HasMaxLength(500);
+                entity.Property(x => x.TemplateGroup).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.PrintTemplateCode).HasMaxLength(100);
+                entity.Property(x => x.LayoutJson).HasColumnType("longtext").IsRequired();
+                entity.Property(x => x.DefaultDataJson).HasColumnType("longtext");
             });
         }
     }

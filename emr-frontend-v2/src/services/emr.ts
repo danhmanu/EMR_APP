@@ -1,6 +1,7 @@
 import http from './http'
 
 export interface EmrInpatientMedicalRecord {
+  [key: string]: unknown
   idLine?: string | null
   patId?: string | null
   idLink?: string | null
@@ -77,6 +78,7 @@ export interface EmrInpatientMedicalRecord {
 }
 
 export interface EmrPatientRow {
+  [key: string]: unknown
   encounterId: number | string
   encounterCode: string
   patientId: number | string

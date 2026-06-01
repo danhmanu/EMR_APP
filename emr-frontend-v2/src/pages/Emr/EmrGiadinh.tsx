@@ -35,6 +35,35 @@ function statusColor(status?: string | null) {
   return 'default'
 }
 
+function patientValue(record: EmrPatientRow, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (value !== undefined && value !== null && value !== '') return String(value)
+  }
+  return ''
+}
+
+function patientId(record: EmrPatientRow) {
+  return patientValue(record, 'encounterId', 'idline', 'idLine', 'medicalrecordid', 'medicalRecordId', 'transferinfoid', 'transferInfoId', 'hospcode', 'hospCode')
+}
+
+function patientGender(record: EmrPatientRow) {
+  const value = patientValue(record, 'gender', 'sex')
+  if (value === '25521') return 'Nam'
+  if (value === '25522') return 'Nữ'
+  return value
+}
+
+function patientBirthDate(record: EmrPatientRow) {
+  const direct = patientValue(record, 'dateOfBirth', 'dateofbirth')
+  if (direct) return direct
+  const year = patientValue(record, 'yearbr', 'yearBr')
+  if (!year) return ''
+  const month = patientValue(record, 'monthbr', 'monthBr') || '1'
+  const day = patientValue(record, 'daybr', 'dayBr') || '1'
+  return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
 export default function EmrGiadinh(): JSX.Element {
   const [form] = Form.useForm<EmrPatientFormValues>()
   const defaultFilterValues = React.useMemo<EmrPatientFormValues>(() => {
@@ -56,7 +85,7 @@ export default function EmrGiadinh(): JSX.Element {
 
   React.useEffect(() => {
     if (!selectedId && rows.length) {
-      setSelectedId(rows[0].encounterId)
+      setSelectedId(patientId(rows[0]))
     }
   }, [rows, selectedId])
 
@@ -111,28 +140,33 @@ export default function EmrGiadinh(): JSX.Element {
   }
 
   const columns: ColumnsType<EmrPatientRow> = [
-    { title: 'Mã bệnh nhân', dataIndex: 'hospCode', width: 135,  fixed: 'left'},
-    { title: 'Mã tiếp nhận', dataIndex: 'encounterCode', width: 140},
-    { title: 'Mã y tế', dataIndex: 'patientCode', width: 135 },
+    { title: 'Mã bệnh nhân', width: 135, fixed: 'left', render: (_, record) => patientValue(record, 'hospcode', 'hospCode') },
+    { title: 'Mã tiếp nhận', width: 140, render: (_, record) => patientValue(record, 'hospitalizationcode', 'hospitalizationCode', 'emecode', 'emeCode') },
+    { title: 'Mã y tế', width: 135, render: (_, record) => patientValue(record, 'medicalcode', 'medicalCode', 'recordcode', 'recordCode') },
     {
       title: 'Tên bệnh nhân',
-      dataIndex: 'fullName',
       width: 210,
-      render: (value, record) => (
-        <Tooltip title={record.address || record.phone || value}>
+      render: (_, record) => {
+        const value = patientValue(record, 'fullname', 'fullName')
+        return (
+        <Tooltip title={patientValue(record, 'address', 'phone') || value}>
           <strong>{value}</strong>
         </Tooltip>
-      )
+        )
+      }
     },
-    { title: 'Ngày sinh', dataIndex: 'dateOfBirth', width: 110, align: 'center' },
-    { title: 'GT', dataIndex: 'gender', width: 70, align: 'center' },
-    { title: 'Số BHYT', dataIndex: 'insuranceNumber', width: 150, render: value => value || <Text type="secondary">-</Text> },
-    { title: 'Phòng / Giường', key: 'roomBed', width: 160, render: (_, record) => `${record.room || '-'} / ${record.bed || '-'}` },
-    { title: 'Bác sĩ ĐT', dataIndex: 'attendingDoctor', width: 170, ellipsis: true },
-    { title: 'Ngày vào viện', dataIndex: 'admissionDate', width: 150 },
-    { title: 'Chẩn đoán', dataIndex: 'diagnosis', width: 320, ellipsis: true },
-    { title: 'Trạng thái', dataIndex: 'status', width: 150, render: value => <Tag color={statusColor(value)}>{value || '-'}</Tag> },
-    { title: 'TKBA', dataIndex: 'isSummarized', width: 85, align: 'center', render: value => yes(value) ? <Tag color="green">Đã TK</Tag> : <Tag>Chưa</Tag> }
+    { title: 'Ngày sinh', width: 110, align: 'center', render: (_, record) => patientBirthDate(record) },
+    { title: 'GT', width: 70, align: 'center', render: (_, record) => patientGender(record) },
+    { title: 'Số BHYT', width: 150, render: (_, record) => patientValue(record, 'nohi', 'noHi', 'bhi') || <Text type="secondary">-</Text> },
+    { title: 'Phòng / Giường', key: 'roomBed', width: 160, render: (_, record) => `${patientValue(record, 'roomname', 'roomName') || '-'} / ${patientValue(record, 'bedname', 'bedName', 'bebname', 'bebName') || '-'}` },
+    { title: 'Bác sĩ ĐT', width: 170, ellipsis: true, render: (_, record) => patientValue(record, 'doctorname', 'doctorName') },
+    { title: 'Ngày vào viện', width: 150, render: (_, record) => patientValue(record, 'hospitalizationdate', 'hospitalizationDate') },
+    { title: 'Chẩn đoán', width: 320, ellipsis: true, render: (_, record) => patientValue(record, 'icdin', 'icdIn', 'reason') },
+    { title: 'Trạng thái', width: 150, render: (_, record) => {
+      const value = patientValue(record, 'statusprofilecode', 'statusProfileCode', 'statusname', 'statusName', 'statustranfercode', 'statusTransferCode')
+      return <Tag color={statusColor(value)}>{value || '-'}</Tag>
+    } },
+    { title: 'TKBA', width: 85, align: 'center', render: (_, record) => patientValue(record, 'statusprofilecode', 'statusProfileCode') === 'DaTongKetBenhAn' || yes(record.isSummarized as number | boolean) ? <Tag color="green">Đã TK</Tag> : <Tag>Chưa</Tag> }
   ]
 
   return (
@@ -187,7 +221,7 @@ export default function EmrGiadinh(): JSX.Element {
         </Form>
 
         <Table
-          rowKey="encounterId"
+          rowKey={record => patientId(record)}
           columns={columns}
           dataSource={rows}
           loading={patients.isLoading || patients.isFetching}
@@ -196,8 +230,8 @@ export default function EmrGiadinh(): JSX.Element {
           locale={{ emptyText: <Empty description="Chọn khu vực và bấm Tìm kiếm" /> }}
           scroll={{ x: 1880, y: 520 }}
           pagination={{ pageSize: 20, showSizeChanger: false, showTotal: total => `${total} bệnh nhân` }}
-          rowClassName={record => record.encounterId === selectedId ? 'emr-row-selected' : ''}
-          onRow={(record) => ({ onClick: () => setSelectedId(record.encounterId) })}
+          rowClassName={record => patientId(record) === selectedId ? 'emr-row-selected' : ''}
+          onRow={(record) => ({ onClick: () => setSelectedId(patientId(record)) })}
         />
       </Card>
     </div>
